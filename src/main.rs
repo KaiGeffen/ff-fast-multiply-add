@@ -40,7 +40,7 @@ impl Add for Naive {
         const N: usize = 2;
 
         let mut carry: u64 = 0;
-        let mut ws: [u64; N] = [0; N + 1];
+        let mut ws: [u64; N + 1] = [0; N + 1];
         let mut us: [u64; N] = [0; N];
         let mut vs: [u64; N] = [0; N];
 
@@ -53,11 +53,12 @@ impl Add for Naive {
         // Loop over the words
         for i in 0..N {
             ws[i] = (us[i] + vs[i] + carry).rem_euclid(self.modulo);
-            carry = (us[i] + vs[i] + carry) / self.modulo
+            carry = (us[i] + vs[i] + carry) / self.modulo;
         }
         ws[N] = carry;
 
-        return ws[0];
+        // TODO Need to either use bigint structure or reduce, since ws[2] is overflows u64
+        return ws[0] + (ws[1] << 32);// + ws[2] << 64;
     }
 }
 impl Multiply for Naive {
@@ -105,8 +106,29 @@ struct Montgomery {
 fn main() {
 
     println!("Hello, world!");
-    let a = Naive{value: 3, modulo: 7};
-    let b = Naive{value: 4, modulo: 7};
+    let a = Naive{value: 3, modulo: 1000};
+    let b = Naive{value: 4, modulo: 1000};
 
     println!("{}", a.add(b));
+}
+
+#[cfg(test)]
+mod naive {
+    use super::*;
+
+    #[test]
+    fn add_basic() {
+        let a = Naive{value: 3, modulo: 1000};
+        let b = Naive{value: 4, modulo: 1000};
+
+        assert_eq!(a.add(b), 7);
+    }
+
+    #[test]
+    fn add_large_numbers() {
+        let a = Naive{value: 27311837, modulo: u64::MAX};
+        let b = Naive{value: 88689789, modulo: u64::MAX};
+
+        assert_eq!(a.add(b), 116001626);
+    }
 }
