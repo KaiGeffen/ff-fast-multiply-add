@@ -1,6 +1,8 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
+use std::collections::HashMap;
+
 trait Add {
     fn add(&self, x: Self) -> u64;
 }
@@ -12,8 +14,6 @@ trait Multiply {
 trait Reduce {
     fn reduce(&self) -> u64;
 }
-
-type ReductionFunc = fn(u64, u64) -> u64;
 
 struct ModularArithmetic {
     value: u64,
@@ -30,7 +30,7 @@ impl Add for ModularArithmetic {
         let mut us: [u64; N] = [0; N];
         let mut vs: [u64; N] = [0; N];
 
-        // TODO Add a utility method that generalizes this
+        // TODO Add a utility method that generalizes this for any number of words
         us[0] = (&self.value << 32) >> 32;
         vs[0] = (x.value << 32) >> 32;
 
@@ -48,15 +48,15 @@ impl Add for ModularArithmetic {
 
         // Perform the reduction
         // Because (A * B) mod N = (A mod N) * (B mod N)
-        // = (wsi mod modulo) * (byte_shift mod modulo)
+        // = (wsi mod N) * (byte_shift mod N) mod N
         // where byte_shift is the number needed to shift word wsi to its correct
         // location in the resulting number (0000[wsi contents]0000)
         for i in 0..N {
             // TODO Generalize 32 based on how many words its broken into
             // TODO This breaks for i = 2, because that's beyond max u64, need to creatively handle that
             let byte_shift: u64 = 1 << (i * 32);
-            ws[i] = (&self.reduce_f)(ws[i], self.modulo) * (&self.reduce_f)(byte_shift, self.modulo);
-            println!("{}", ws[i]);
+            let product = (&self.reduce_f)(ws[i], self.modulo) * (&self.reduce_f)(byte_shift, self.modulo);
+            ws[i] = (&self.reduce_f)(product, self.modulo);
         }
 
         // TODO Need to either use bigint structure or reduce, since ws[2] is overflows u64
@@ -69,12 +69,6 @@ impl Multiply for ModularArithmetic {
         return &self.value - q * &self.modulo;
     }
 }
-// NOTE For testing purposes
-impl Reduce for ModularArithmetic {
-    fn reduce(&self) -> u64 {
-        return (self.reduce_f)(self.value, self.modulo)
-    }
-}
 
 /*
     REDUCTION FUNCTIONS
@@ -84,10 +78,48 @@ impl Reduce for ModularArithmetic {
 fn naive_reduce(value: u64, modulo: u64) -> u64 {
     println!("value: {:?}", value);
     let q: u64 = value / modulo;
-    println!("quotiant: {:?}", q);
+    println!("quotient: {:?}", q);
     println!("reduction result: {:?}", value - q * modulo);
     return value - q * modulo;
 }
+
+// Implementation of Barrett reduction for modular arithmetic
+fn barrett_reduce(value: u64, modulo: u64) -> u64 {
+    // Approximate division by n (modulo) by multiplication by m/(2**k)
+    // Choose m = floor(2**k/n) to avoid underflow error
+
+    // Choose k st 2**k > n
+    // Compute m = 2**k / n
+    // Only do that division once, save the precomputed result, and use it in the future
+    // Map from modulo to precomputed k-values for Barrett
+    // TODO How to choose good m here? I'm choosing the smallest but that can't be right
+    let precomputed_ms: HashMap<u64, (u64, u64)> = HashMap::from([
+        // (500, 1), // n = 500, k = 9, m = 1
+        (500, (20, 2097)), // n = 500, k = 20, m = 2097
+        
+    ]);
+
+    // TODO We are dividing by n, why is that okay here? Aren't we aiming to avoid division?
+    // let m: u64 = (2 ** k) / modulo;
+
+    match precomputed_ms.get(&modulo) {
+        Some((k, m)) => {
+            let q: u64 = (value * m) >> k;
+            println!("Quotient: {:?}", q);
+            
+            let result: u64 = value - q * modulo;
+            println!("Reduction result: {:?}", result);
+
+            return result;
+        }
+        None => {
+            panic!("Modulo {} does not have a precomputed Barrett m!", modulo);
+        }
+    }   
+}
+
+
+// 
 
 // All 3 of these structs add and multiply in the same way,
 // but after doing so they then reduce and either keep the reduced form
@@ -132,6 +164,14 @@ mod modular_arithmetic_works {
         let b = ModularArithmetic{value: 400, modulo: 500, reduce_f: Box::new(naive_reduce)};
 
         assert_eq!(a.add(b), 201);
+    }
+
+    #[test]
+    fn add_works_when_a_times_b_equals_modulo() {
+        let a = ModularArithmetic{value: 2, modulo: 4, reduce_f: Box::new(naive_reduce)};
+        let b = ModularArithmetic{value: 2, modulo: 4, reduce_f: Box::new(naive_reduce)};
+
+        assert_eq!(a.add(b), 0);
     }
 
     // #[test]
