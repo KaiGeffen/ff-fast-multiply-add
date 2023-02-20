@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
+#![feature(test)]
 
 use std::collections::HashMap;
 
@@ -65,8 +66,21 @@ impl Add for ModularArithmetic {
 }
 impl Multiply for ModularArithmetic {
     fn multiply(&self, x: Self) -> u64 {
-        let q: u64 = &self.value / &self.modulo;
-        return &self.value - q * &self.modulo;
+        // TODO Implement multiply
+
+        // Determine how many words to break values into
+
+        // Break each value into words
+
+        // Run through the words doing multiplication
+        // Hold onto the results
+
+
+
+        // Reduce
+
+        
+        return 0;
     }
 }
 
@@ -96,19 +110,20 @@ fn barrett_reduce(value: u64, modulo: u64) -> u64 {
     let precomputed_ms: HashMap<u64, (u64, u64)> = HashMap::from([
         // (500, 1), // n = 500, k = 9, m = 1
         (500, (20, 2097)), // n = 500, k = 20, m = 2097
-        
+        (6440809, (40, 170710)), // n = 6440809, k = 40, m = 170710
     ]);
-
-    // TODO We are dividing by n, why is that okay here? Aren't we aiming to avoid division?
-    // let m: u64 = (2 ** k) / modulo;
 
     match precomputed_ms.get(&modulo) {
         Some((k, m)) => {
             let q: u64 = (value * m) >> k;
             println!("Quotient: {:?}", q);
             
-            let result: u64 = value - q * modulo;
+            let mut result: u64 = value - q * modulo;
             println!("Reduction result: {:?}", result);
+
+            while result >= modulo {
+                result -= modulo;
+            }
 
             return result;
         }
@@ -118,8 +133,41 @@ fn barrett_reduce(value: u64, modulo: u64) -> u64 {
     }   
 }
 
+// Implementation of Barrett reduction for modular arithmetic
+fn barrett_reduce(value: u64, modulo: u64) -> u64 {
+    // Approximate division by n (modulo) by multiplication by m/(2**k)
+    // Choose m = floor(2**k/n) to avoid underflow error
 
-// 
+    // Choose k st 2**k > n
+    // Compute m = 2**k / n
+    // Only do that division once, save the precomputed result, and use it in the future
+    // Map from modulo to precomputed k-values for Barrett
+    // TODO How to choose good m here? I'm choosing the smallest but that can't be right
+    let precomputed_ms: HashMap<u64, (u64, u64)> = HashMap::from([
+        // (500, 1), // n = 500, k = 9, m = 1
+        (500, (20, 2097)), // n = 500, k = 20, m = 2097
+        (6440809, (40, 170710)), // n = 6440809, k = 40, m = 170710
+    ]);
+
+    match precomputed_ms.get(&modulo) {
+        Some((k, m)) => {
+            let q: u64 = (value * m) >> k;
+            println!("Quotient: {:?}", q);
+            
+            let mut result: u64 = value - q * modulo;
+            println!("Reduction result: {:?}", result);
+
+            while result >= modulo {
+                result -= modulo;
+            }
+
+            return result;
+        }
+        None => {
+            panic!("Modulo {} does not have a precomputed Barrett m!", modulo);
+        }
+    }   
+}
 
 // All 3 of these structs add and multiply in the same way,
 // but after doing so they then reduce and either keep the reduced form
@@ -208,4 +256,76 @@ mod barrett {
 
         assert_eq!(a.add(b), 7);
     }
+}
+
+// Benchmark tests to see the effect of not dividing
+
+extern crate test;
+use test::Bencher;
+use rand::Rng;
+#[cfg(test)]
+mod benchmarks {
+    use super::*;
+
+    const REPS: usize = 30;
+    const MOD: u64 = 6440809;
+
+    #[bench]
+    fn naive_addition(bencher: &mut Bencher) {
+        let mut rng = rand::thread_rng();
+
+        // Do additions (Including reduction) and track how long that takes
+        bencher.iter(|| {
+            for _ in 0..REPS {
+                // Ideally, don't measure the time to instantiate
+                let a = ModularArithmetic{value: rng.gen::<u64>(), modulo: MOD, reduce_f: Box::new(naive_reduce)};
+                let b = ModularArithmetic{value: rng.gen::<u64>(), modulo: MOD, reduce_f: Box::new(naive_reduce)};
+
+                a.add(b);
+            }
+        })
+    }
+
+    #[bench]
+    fn barrett_addition(bencher: &mut Bencher) {
+        let mut rng = rand::thread_rng();
+
+        // Do additions (Including reduction) and track how long that takes
+        bencher.iter(|| {
+            for _ in 0..REPS {
+                // Ideally, don't measure the time to instantiate
+                let a = ModularArithmetic{value: rng.gen::<u64>(), modulo: MOD, reduce_f: Box::new(barrett_reduce)};
+                let b = ModularArithmetic{value: rng.gen::<u64>(), modulo: MOD, reduce_f: Box::new(barrett_reduce)};
+                a.add(b);
+            }
+        })
+    }
+
+    #[bench]
+    fn naive_add_small_numbers(bencher: &mut Bencher) {
+        // Do additions (Including reduction) and track how long that takes
+        bencher.iter(|| {
+            for _ in 0..REPS {
+                // Ideally, don't measure the time to instantiate
+                let a = ModularArithmetic{value: 3, modulo: MOD, reduce_f: Box::new(naive_reduce)};
+                let b = ModularArithmetic{value: 5, modulo: MOD, reduce_f: Box::new(naive_reduce)};
+                a.add(b);
+            }
+        })
+    }
+    #[bench]
+    fn barrett_add_small_numbers(bencher: &mut Bencher) {
+        // Do additions (Including reduction) and track how long that takes
+        bencher.iter(|| {
+            for _ in 0..REPS {
+                // Ideally, don't measure the time to instantiate
+                let a = ModularArithmetic{value: 3, modulo: MOD, reduce_f: Box::new(barrett_reduce)};
+                let b = ModularArithmetic{value: 5, modulo: MOD, reduce_f: Box::new(barrett_reduce)};
+                a.add(b);
+            }
+        })
+    }
+
+
+
 }
