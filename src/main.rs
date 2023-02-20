@@ -68,16 +68,56 @@ impl Multiply for ModularArithmetic {
     fn multiply(&self, x: Self) -> u64 {
         // TODO Implement multiply
 
-        // Determine how many words to break values into
+        // Break the u64 values into 8 words of 1 byte each
+        const N: usize = 8;
 
-        // Break each value into words
+        // Product
+        let mut ws: [u64; N*2] = [0; N*2];
+        // a as words
+        let mut us: [u64; N] = [0; N];
+        // b as words
+        let mut vs: [u64; N] = [0; N];
+
+        // Populate those arrays
+        for i in 0..N {
+            // Get rid of the bits to the right first
+            us[i] = &self.value >> (8 * i);
+            vs[i] = &x.value >> (8 * i);
+
+            // Only keep the 1 byte (2**8)
+            let base: u64 = 2;
+            us[i] = us[i] & (base.pow(8) - 1); 
+            vs[i] = vs[i] & (base.pow(8) - 1); 
+        }
+
 
         // Run through the words doing multiplication
-        // Hold onto the results
+        // Hold onto the results in ws array
+        let mut carry: u64 = 0;
+        for i in 0..N {
+            carry = 0;
 
+            if us[i] == 0 {
+                // TODO Maybe this doesnt work, I keep the sizes of each equal (n = m) and allow empty words
+                ws[N + i] = 0;
+            } else {
+                for j in 0..N {
+                    let t: u64 = us[i] * vs[j] + ws[i + j] + carry;
 
+                    ws[i + j] = t.rem_euclid(self.modulo);
+                    
+                    carry = t / self.modulo;
+                }
+                ws[N + i] = carry;
+            }
+        }
 
         // Reduce
+        for i in 0..(N*2) {
+            let byte_shift: u64 = 1 << (i * 32);
+            let product = (&self.reduce_f)(ws[i], self.modulo) * (&self.reduce_f)(byte_shift, self.modulo);
+            ws[i] = (&self.reduce_f)(product, self.modulo);
+        }
 
         
         return 0;
