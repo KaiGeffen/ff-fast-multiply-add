@@ -180,4 +180,32 @@ mod modular_arithmetic_works {
 
     //     assert_eq!(a.add(b), 201);
     // }
+
+    #[test]
+    fn barret() {
+        let a = ModularArithmetic{value: 301, modulo: 500, reduce_f: Box::new(naive_reduce)};
+        let b = ModularArithmetic{value: 400, modulo: 500, reduce_f: Box::new(naive_reduce)};
+
+        assert_eq!(a.add(b), 201);
+    }
+}
+#[cfg(test)]
+mod barrett {
+    use super::*;
+
+    #[test]
+    fn add_no_reduce() {
+        let a = ModularArithmetic{value: 3, modulo: 500, reduce_f: Box::new(barrett_reduce)};
+        let b = ModularArithmetic{value: 4, modulo: 500, reduce_f: Box::new(barrett_reduce)};
+
+        assert_eq!(a.add(b), 7);
+    }
+
+    #[test]
+    fn add_reduce() {
+        let a = ModularArithmetic{value: 503, modulo: 500, reduce_f: Box::new(barrett_reduce)};
+        let b = ModularArithmetic{value: 4, modulo: 500, reduce_f: Box::new(barrett_reduce)};
+
+        assert_eq!(a.add(b), 7);
+    }
 }
