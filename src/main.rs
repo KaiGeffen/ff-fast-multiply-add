@@ -9,13 +9,16 @@ trait Multiply {
     fn multiply(&self, x: Self) -> u64;
 }
 
+trait Reduce {
+    fn reduce(&self) -> u64;
+}
+
 type ReductionFunc = fn(u64, u64) -> u64;
 
-#[derive(Default)]
 struct ModularArithmetic {
     value: u64,
     modulo: u64,
-    // reduce_f: ReductionFunc
+    reduce_f: Box<dyn Fn(u64, u64) -> u64>,
 }
 impl Add for ModularArithmetic {
     fn add(&self, x: Self) -> u64 {
@@ -36,10 +39,25 @@ impl Add for ModularArithmetic {
 
         // Loop over the words
         for i in 0..N {
-            ws[i] = (us[i] + vs[i] + carry).rem_euclid(self.modulo);
-            carry = (us[i] + vs[i] + carry) / self.modulo;
+            // TODO Generalize, also slightly wrong (b should be 1 more than MAX)
+            let b: u64 = if i == 0 { 1 << 32 } else { u64::MAX };
+            ws[i] = (us[i] + vs[i] + carry).rem_euclid(b);
+            carry = (us[i] + vs[i] + carry) / b;
         }
         ws[N] = carry;
+
+        // Perform the reduction
+        // Because (A * B) mod N = (A mod N) * (B mod N)
+        // = (wsi mod modulo) * (byte_shift mod modulo)
+        // where byte_shift is the number needed to shift word wsi to its correct
+        // location in the resulting number (0000[wsi contents]0000)
+        for i in 0..N {
+            // TODO Generalize 32 based on how many words its broken into
+            // TODO This breaks for i = 2, because that's beyond max u64, need to creatively handle that
+            let byte_shift: u64 = 1 << (i * 32);
+            ws[i] = (&self.reduce_f)(ws[i], self.modulo) * (&self.reduce_f)(byte_shift, self.modulo);
+            println!("{}", ws[i]);
+        }
 
         // TODO Need to either use bigint structure or reduce, since ws[2] is overflows u64
         return ws[0] + (ws[1] << 32);// + ws[2] << 64;
@@ -51,10 +69,23 @@ impl Multiply for ModularArithmetic {
         return &self.value - q * &self.modulo;
     }
 }
+// NOTE For testing purposes
+impl Reduce for ModularArithmetic {
+    fn reduce(&self) -> u64 {
+        return (self.reduce_f)(self.value, self.modulo)
+    }
+}
+
+/*
+    REDUCTION FUNCTIONS
+*/
 
 // A naive implementation of modular arithmetic
 fn naive_reduce(value: u64, modulo: u64) -> u64 {
+    println!("value: {:?}", value);
     let q: u64 = value / modulo;
+    println!("quotiant: {:?}", q);
+    println!("reduction result: {:?}", value - q * modulo);
     return value - q * modulo;
 }
 
@@ -69,8 +100,8 @@ fn naive_reduce(value: u64, modulo: u64) -> u64 {
 fn main() {
 
     println!("Hello, world!");
-    let a = ModularArithmetic{value: 3, modulo: 1000};
-    let b = ModularArithmetic{value: 4, modulo: 1000};
+    let a = ModularArithmetic{value: 3, modulo: 1000, reduce_f: Box::new(naive_reduce)};
+    let b = ModularArithmetic{value: 4, modulo: 1000, reduce_f: Box::new(naive_reduce)};
 
     println!("{}", a.add(b));
 }
@@ -81,17 +112,32 @@ mod modular_arithmetic_works {
 
     #[test]
     fn add_basic() {
-        let a = ModularArithmetic{value: 3, modulo: 1000};
-        let b = ModularArithmetic{value: 4, modulo: 1000};
+        let a = ModularArithmetic{value: 3, modulo: 1000, reduce_f: Box::new(naive_reduce)};
+        let b = ModularArithmetic{value: 4, modulo: 1000, reduce_f: Box::new(naive_reduce)};
 
         assert_eq!(a.add(b), 7);
     }
 
     #[test]
     fn add_large_numbers() {
-        let a = ModularArithmetic{value: 27311837, modulo: u64::MAX};
-        let b = ModularArithmetic{value: 88689789, modulo: u64::MAX};
+        let a = ModularArithmetic{value: 27311837, modulo: u64::MAX, reduce_f: Box::new(naive_reduce)};
+        let b = ModularArithmetic{value: 88689789, modulo: u64::MAX, reduce_f: Box::new(naive_reduce)};
 
         assert_eq!(a.add(b), 116001626);
     }
+
+    #[test]
+    fn add_works_when_exceeding_modulo_less_than_2x() {
+        let a = ModularArithmetic{value: 301, modulo: 500, reduce_f: Box::new(naive_reduce)};
+        let b = ModularArithmetic{value: 400, modulo: 500, reduce_f: Box::new(naive_reduce)};
+
+        assert_eq!(a.add(b), 201);
+    }
+
+    // #[test]
+    // fn naive_reduce_sanity() {
+    //     let a = ModularArithmetic{value: 10, modulo: 8, reduce_f: Box::new(naive_reduce)};
+
+    //     assert_eq!(a.add(b), 201);
+    // }
 }
