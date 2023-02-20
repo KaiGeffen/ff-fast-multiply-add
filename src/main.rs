@@ -52,16 +52,16 @@ impl Add for ModularArithmetic {
         // = (wsi mod N) * (byte_shift mod N) mod N
         // where byte_shift is the number needed to shift word wsi to its correct
         // location in the resulting number (0000[wsi contents]0000)
+        let mut result: u64 = 0;
         for i in 0..N {
             // TODO Generalize 32 based on how many words its broken into
             // TODO This breaks for i = 2, because that's beyond max u64, need to creatively handle that
             let byte_shift: u64 = 1 << (i * 32);
             let product = (&self.reduce_f)(ws[i], self.modulo) * (&self.reduce_f)(byte_shift, self.modulo);
-            ws[i] = (&self.reduce_f)(product, self.modulo);
+            result += (&self.reduce_f)(product, self.modulo);
         }
 
-        // TODO Need to either use bigint structure or reduce, since ws[2] is overflows u64
-        return ws[0] + (ws[1] << 32);// + ws[2] << 64;
+        return result;
     }
 }
 impl Multiply for ModularArithmetic {
@@ -105,30 +105,42 @@ impl Multiply for ModularArithmetic {
                     let t: u64 = us[i] * vs[j] + ws[i + j] + carry;
 
                     ws[i + j] = t.rem_euclid(self.modulo);
-                    
+
                     carry = t / self.modulo;
                 }
                 ws[N + i] = carry;
             }
         }
 
+        // TODO Doing this correctly 
         // Reduce
+        // This process is going through each of the words, which without modulo might not fit into a u64
+        // and without any of them overflowing, ending up with the result (Which must fit in u64 because the modulo is u64)
+        // Montgomery does this in a different way that we may need to special case for
+        // it maintains it in a different representation, and can return to Classical form if we need
+        // But if we do that each time I imagine that the performance gains are lost
+
+        // Mod of a series is the sum of their mod
+        // Each of the terms is its value in the array times some factor of 2
+        // mod of that product can be represented as (a*b mod m) = (a mod m) * (b mod m) mod m
+        // An issue is that b (The power of 2) may overflow u64
+        // we could instead further break it down (Saying that b = 2**n = 2**(x+y) where n = x + y, = 2**x * 2**y)
+        // Then we could repeat the product rule for mod again with that?
+        // TODO Is that the best naive way to do it? 
         for i in 0..(N*2) {
+
+            // TODO Needs work
             let byte_shift: u64 = 1 << (i * 32);
             let product = (&self.reduce_f)(ws[i], self.modulo) * (&self.reduce_f)(byte_shift, self.modulo);
             ws[i] = (&self.reduce_f)(product, self.modulo);
         }
 
-        
         return 0;
     }
 }
 
-/*
-    REDUCTION FUNCTIONS
-*/
-
-// A naive implementation of modular arithmetic
+//              REDUCTION FUNCTIONS             //
+// A naive implementation of reduce using division
 fn naive_reduce(value: u64, modulo: u64) -> u64 {
     println!("value: {:?}", value);
     let q: u64 = value / modulo;
@@ -173,8 +185,8 @@ fn barrett_reduce(value: u64, modulo: u64) -> u64 {
     }   
 }
 
-// Implementation of Barrett reduction for modular arithmetic
-fn barrett_reduce(value: u64, modulo: u64) -> u64 {
+// Implementation of Montgomery reduction for modular arithmetic
+fn montgomery_reduce(value: u64, modulo: u64) -> u64 {
     // Approximate division by n (modulo) by multiplication by m/(2**k)
     // Choose m = floor(2**k/n) to avoid underflow error
 
@@ -216,15 +228,6 @@ fn barrett_reduce(value: u64, modulo: u64) -> u64 {
 // that also takes a reduce function!
 // The 3 cases to test are when a naive function is passed (Division)
 // the barret reduction, and the Montgomery reduction
-
-fn main() {
-
-    println!("Hello, world!");
-    let a = ModularArithmetic{value: 3, modulo: 1000, reduce_f: Box::new(naive_reduce)};
-    let b = ModularArithmetic{value: 4, modulo: 1000, reduce_f: Box::new(naive_reduce)};
-
-    println!("{}", a.add(b));
-}
 
 #[cfg(test)]
 mod modular_arithmetic_works {
@@ -307,7 +310,7 @@ use rand::Rng;
 mod benchmarks {
     use super::*;
 
-    const REPS: usize = 30;
+    const REPS: usize = 100;
     const MOD: u64 = 6440809;
 
     #[bench]
@@ -365,7 +368,4 @@ mod benchmarks {
             }
         })
     }
-
-
-
 }
